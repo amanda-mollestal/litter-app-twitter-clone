@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress
+  annotations:
+    # Add any specific annotations here, if needed
+spec:
+  ingressClassName: nginx  # Assuming you're using NGINX Ingress in production
+  rules:
+    - host: cscloud7-103.lnu.se
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: litter
+                port:
+                  number: 8888

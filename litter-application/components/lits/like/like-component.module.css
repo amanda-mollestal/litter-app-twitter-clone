@@ -1,0 +1,13 @@
+.icon:hover {
+  color: #f6ae28;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.icon {
+  transition: color 0.1s;
+}
+
+.icon.liked {
+  color: #f6ae28;
+}

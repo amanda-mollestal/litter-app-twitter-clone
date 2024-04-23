@@ -1,0 +1,204 @@
+ALTER TABLE public.comments
+ADD COLUMN like_count INTEGER DEFAULT 0;
+
+ALTER TABLE public.lits
+ADD COLUMN comment_count INTEGER DEFAULT 0,
+ADD COLUMN like_count INTEGER DEFAULT 0;
+
+
+
+
+
+CREATE TRIGGER trigger_update_comment_count_after_insert
+AFTER INSERT ON public.comments
+FOR EACH ROW
+EXECUTE FUNCTION public.update_comment_count();
+
+CREATE TRIGGER trigger_update_comment_count_after_delete
+AFTER DELETE ON public.comments
+FOR EACH ROW
+EXECUTE FUNCTION public.update_comment_count();
+
+
+
+
+
+CREATE TABLE public.comments (
+    id uuid NOT NULL DEFAULT gen_random_uuid(), -- Unique identifier for each comment
+    parent_lit_id uuid NOT NULL, -- ID of the lit this comment is associated with
+    user_id uuid NOT NULL, -- ID of the user who posted the comment
+    username varchar(255), -- Username of the commenter
+    full_name varchar(255), -- Full name of the commenter
+    avatar_url text, -- URL of the commenter's avatar
+    content text NOT NULL, -- The content of the comment
+    created_at timestamptz NOT NULL DEFAULT now(), -- Timestamp of when the comment was created
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES public.profiles(id), -- Link to the user's profile
+    FOREIGN KEY (parent_lit_id) REFERENCES public.lits(id) -- Link to the parent lit
+);
+
+
+
+
+create trigger create_new_profile_for_users after
+insert
+    on
+    auth.users for each row execute function create_profile_for_users();
+
+
+    CREATE OR REPLACE FUNCTION public.create_profile_for_users()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $function$
+BEGIN
+  INSERT INTO public.profiles (id, email, first_name, last_name, avatar_url, username)
+  SELECT
+    new.id,
+    new.email,
+    COALESCE((regexp_split_to_array(jsonb_extract_path_text(new.raw_user_meta_data, 'full_name'), E'\\s+'))[1], NULL),
+    COALESCE(array_to_string((regexp_split_to_array(jsonb_extract_path_text(new.raw_user_meta_data, 'full_name'), E'\\s+'))[2:array_length(regexp_split_to_array(jsonb_extract_path_text(new.raw_user_meta_data, 'full_name'), E'\\s+'), 1)], ' '), NULL),
+    COALESCE(jsonb_extract_path_text(new.raw_user_meta_data, 'picture'), jsonb_extract_path_text(new.raw_user_meta_data, 'avatar_url'), NULL),
+    split_part(new.email, '@', 1);
+
+  RETURN new;
+END;
+$function$;
+
+
+
+
+CREATE TABLE public.follows (
+    follower_id uuid NOT NULL, -- ID of the user who is following
+    followed_id uuid NOT NULL, -- ID of the user being followed
+    created_at timestamptz NOT NULL DEFAULT now(), -- Timestamp of when the follow happened
+    PRIMARY KEY (follower_id, followed_id),
+    FOREIGN KEY (follower_id) REFERENCES public.profiles(id), -- Link to the follower's profile
+    FOREIGN KEY (followed_id) REFERENCES public.profiles(id) -- Link to the followed user's profile
+);
+
+
+
+
+CREATE TRIGGER trigger_update_like_count_after_insert
+AFTER INSERT ON public.likes
+FOR EACH ROW
+EXECUTE FUNCTION public.update_like_count();
+
+CREATE TRIGGER trigger_update_like_count_after_delete
+AFTER DELETE ON public.likes
+FOR EACH ROW
+EXECUTE FUNCTION public.update_like_count();
+
+
+
+
+CREATE TABLE public.likes (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),    -- Unique identifier for each like
+    target_id uuid NOT NULL,                       -- ID of the lit or comment being liked
+    user_id uuid NOT NULL,                         -- ID of the user who liked
+    created_at timestamptz NOT NULL DEFAULT now(), -- Timestamp of when the like was created
+    type varchar(10) CHECK (type IN ('lit', 'comment')), -- Type of target (lit or comment)
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES public.profiles(id) -- Link to the user's profile
+);
+
+
+
+
+CREATE TABLE public.lits (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),    -- Unique identifier for each lit
+    user_id uuid NOT NULL,                         -- Link to the user who posted the lit
+    username varchar(255),                         -- Username, derived from the user's email
+    full_name varchar(255),                        -- User's full name
+    avatar_url text,                               -- URL of the user's avatar
+    content varchar(42) NOT NULL,                  -- Lit content, limited to 42 characters
+    created_at timestamptz NOT NULL DEFAULT now(), -- Timestamp of when the lit was created
+    PRIMARY KEY (id),                              -- Primary key constraint
+    FOREIGN KEY (user_id) REFERENCES public.profiles(id) -- Foreign key linking to user profiles
+);
+
+
+
+
+
+CREATE TABLE public.profiles (
+ id uuid NOT NULL,
+ avatar_url text NULL,
+ first_name varchar NULL,
+ last_name varchar NULL,
+ email varchar NULL,
+ username varchar NULL,
+ created_at timestamptz NULL DEFAULT now(),
+ title text NULL,
+ CONSTRAINT profiles_pkey PRIMARY KEY (id)
+);
+
+
+
+
+
+CREATE OR REPLACE FUNCTION public.update_comment_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE public.lits SET comment_count = comment_count + 1
+        WHERE id = NEW.parent_lit_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE public.lits SET comment_count = comment_count - 1
+        WHERE id = OLD.parent_lit_id AND comment_count > 0;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+
+UPDATE public.lits l
+SET comment_count = (
+    SELECT COUNT(*)
+    FROM public.comments c
+    WHERE c.parent_lit_id = l.id
+);
+
+
+CREATE OR REPLACE FUNCTION public.update_like_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.type = 'lit' THEN
+            UPDATE public.lits SET like_count = like_count + 1
+            WHERE id = NEW.target_id;
+        ELSIF NEW.type = 'comment' THEN
+            UPDATE public.comments SET like_count = like_count + 1
+            WHERE id = NEW.target_id;
+        END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.type = 'lit' THEN
+            UPDATE public.lits SET like_count = like_count - 1
+            WHERE id = OLD.target_id AND like_count > 0;
+        ELSIF OLD.type = 'comment' THEN
+            UPDATE public.comments SET like_count = like_count - 1
+            WHERE id = OLD.target_id AND like_count > 0;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+UPDATE public.comments SET like_count = subquery.like_count
+FROM (
+    SELECT target_id, COUNT(*) as like_count
+    FROM public.likes
+    WHERE type = 'comment'
+    GROUP BY target_id
+) AS subquery
+WHERE public.comments.id = subquery.target_id;
+
+
+
+
+

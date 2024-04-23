@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service.name: litter-staging
+  name: litter-staging
+  namespace: staging
+spec:
+  ports:
+    - name: "litter-port"
+      port: 8888
+      targetPort: litter-http
+  selector:
+    deployment.name: litter-staging
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litter-staging
+  namespace: staging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      deployment.name: litter-staging
+  template:
+    metadata:
+      labels:
+        deployment.name: litter-staging
+    spec:
+      containers:
+      - name: litter
+        image: gitlab.lnu.se:5050/2dv013/student/team-2023-01-burmese/litter-application:staging-0.5.8
+        env:
+        - name: PORT
+          value: "3000"
+        - name: NEXT_PUBLIC_SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: supabase-url
+              key: NEXT_PUBLIC_SUPABASE_URL
+        - name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: supabase-anon-key
+              key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        - name: NEXT_PUBLIC_READ_REPLICA_SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: read-replica-supabase-url
+              key: NEXT_PUBLIC_READ_REPLICA_SUPABASE_URL
+        - name: NEXT_PUBLIC_READ_REPLICA_SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: read-replica-supabase-anon-key
+              key: NEXT_PUBLIC_READ_REPLICA_SUPABASE_ANON_KEY
+        - name: NEXT_PUBLIC_LITTER_URL
+          valueFrom:
+            secretKeyRef:
+              name: litter-staging-url
+              key: NEXT_PUBLIC_LITTER_URL
+        - name: NEXT_PUBLIC_TEST_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: test-email
+              key: NEXT_PUBLIC_TEST_EMAIL
+        - name: NEXT_PUBLIC_TEST_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-password
+              key: NEXT_PUBLIC_TEST_PASSWORD
+        ports:
+          - containerPort: 3000
+            name: litter-http
+      imagePullSecrets:
+      - name: regcred

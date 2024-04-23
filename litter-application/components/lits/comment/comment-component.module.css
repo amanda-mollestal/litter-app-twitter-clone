@@ -1,0 +1,12 @@
+.icon:hover {
+  color: #f6ae28;
+  cursor: pointer;
+}
+
+.icon {
+  transition: color 0.2s;
+}
+
+.comment:first-of-type {
+  border-top: none;
+}

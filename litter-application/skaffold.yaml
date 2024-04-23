@@ -1,0 +1,33 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: k8s-web-application
+build:
+  artifacts:
+    - image: gitlab.lnu.se:5050/2dv013/student/team-2023-01-burmese/litter-application
+      docker:
+        dockerfile: Dockerfile.production
+manifests:
+  rawYaml:
+    - k8s/ingress.yaml
+    - k8s/litter.yaml
+deploy:
+  kubectl: {}
+
+profiles:
+# Staging profile
+- name: staging
+  patches:
+    - op: replace 
+      path: /manifests/rawYaml/0  # JSON Pointer to ingress.yaml
+      value: k8s/ingress.staging.yaml  # Pointing to a staging-specific ingress.yaml
+    - op: replace
+      path: /manifests/rawYaml/1  # JSON Pointer to litter.yaml
+      value: k8s/litter.staging.yaml  # Pointing to a staging-specific litter.yaml
+
+# Production profile
+- name: production
+  patches:
+    - op: replace 
+      path: /manifests/rawYaml/0  # JSON Pointer to ingress.yaml
+      value: k8s/ingress.production.yaml  # The value for the ingressClassName field is added in this one
